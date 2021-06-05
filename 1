@@ -1,0 +1,368 @@
+const { format } = require("date-fns");
+
+const express = require("express");
+const app = express();
+app.use(express.json());
+const { open } = require("sqlite");
+const sqlite3 = require("sqlite3");
+const path = require("path");
+const dbPath = path.join(__dirname, "todoApplication.db");
+
+let db = null;
+
+const initializeDBAndServer = async () => {
+  try {
+    db = await open({
+      filename: dbPath,
+      driver: sqlite3.Database,
+    });
+    app.listen(3000, () => {
+      console.log("server is running at http://localhost:3000");
+    });
+  } catch (e) {
+    console.log(`DATABASE ERROR ${e.message}`);
+    process.exit(1);
+  }
+};
+initializeDBAndServer();
+
+const havingStatus = (queryObj) => {
+  return queryObj.status !== undefined;
+};
+
+const havingPriority = (queryObj) => {
+  return queryObj.priority !== undefined;
+};
+
+const havingStatusAndPriority = (queryObj) => {
+  return queryObj.status !== undefined && queryObj.priority !== undefined;
+};
+
+const havingSearch_q = (queryObj) => {
+  return queryObj.search_q !== undefined;
+};
+
+const havingCategoryAndStatus = (queryObj) => {
+  return queryObj.status !== undefined && queryObj.category !== undefined;
+};
+
+const havingCategory = (queryObj) => {
+  return queryObj.category !== undefined;
+};
+
+const havingCategoryAndPriority = (queryObj) => {
+  return queryObj.category !== undefined && queryObj.priority !== undefined;
+};
+
+// CHECKING FOR ERROR IN STATUS
+
+const invalidStatus = (queryObj) => {
+  if (
+    queryObj.status === "TO DO" ||
+    queryObj.status === "IN PROGRESS" ||
+    queryObj.status === "DONE"
+  ) {
+    return false;
+  } else {
+    return true;
+  }
+};
+
+//CHECKING FOR ERROR IN PRIORITY
+
+const invalidPriority = (queryObj) => {
+  if (
+    queryObj.priority === "HIGH" ||
+    queryObj.priority === "MEDIUM" ||
+    queryObj.priority === "LOW"
+  ) {
+    return false;
+  } else {
+    return true;
+  }
+};
+
+//CHECKING ERROR IN CATEGORY
+
+const invalidCategory = (queryObj) => {
+  if (
+    queryObj.category === "WORK" ||
+    queryObj.category === "HOME" ||
+    queryObj.category === "LEARNING"
+  ) {
+    return false;
+  } else {
+    return true;
+  }
+};
+
+//RESPONSE OBJECT
+
+const responsePattern = (obj) => {
+  return {
+    id: obj.id,
+    todo: obj.todo,
+    priority: obj.priority,
+    status: obj.status,
+    category: obj.category,
+    dueDate: obj.due_date,
+  };
+};
+
+app.get("/todos/", async (request, response) => {
+  let getQuery = "";
+  const queryObj = request.query;
+  const { search_q } = request.query;
+
+  switch (true) {
+    //STATUS AND PRIORITY
+    case havingStatusAndPriority(queryObj):
+      if (
+        (queryObj.status === "TO DO" ||
+          queryObj.status === "IN PROGRESS" ||
+          queryObj.status === "DONE") &&
+        (queryObj.priority === "HIGH" ||
+          queryObj.priority === "MEDIUM" ||
+          queryObj.priority === "LOW")
+      ) {
+        getQuery = `
+        SELECT * FROM todo
+        WHERE priority LIKE '${queryObj.priority}'
+        AND status LIKE '${queryObj.status}'`;
+      } else {
+        if (invalidPriority(queryObj)) {
+          response.status(400);
+          response.send("Invalid Todo Priority");
+        } else if (invalidStatus(queryObj)) {
+          response.status(400);
+          response.send("Invalid Todo Status");
+        }
+      }
+      break;
+    // CATEGORY AND STATUS
+    case havingCategoryAndStatus(queryObj):
+      if (
+        (queryObj.category === "WORK" ||
+          queryObj.category === "HOME" ||
+          queryObj.category === "LEARNING") &&
+        (queryObj.status === "TO DO" ||
+          queryObj.status === "IN PROGRESS" ||
+          queryObj.status === "DONE")
+      ) {
+        getQuery = `
+              SELECT * FROM todo
+              WHERE category = '${queryObj.category}'
+              AND status = '${queryObj.status}';`;
+      } else {
+        if (invalidCategory(queryObj)) {
+          response.status(400);
+          response.send("Invalid Todo Category");
+        } else if (invalidStatus(queryObj)) {
+          response.status(400);
+          response.send("Invalid Todo Status");
+        }
+      }
+      break;
+    case havingCategoryAndPriority(queryObj):
+      if (
+        (queryObj.category === "WORK" ||
+          queryObj.category === "HOME" ||
+          queryObj.category === "LEARNING") &&
+        (queryObj.priority === "HIGH" ||
+          queryObj.priority === "MEDIUM" ||
+          queryObj.priority === "LOW")
+      ) {
+        getQuery = `
+          SELECT * FROM todo
+          WHERE category = '${queryObj.category}'
+          AND priority = '${queryObj.priority}';`;
+      } else {
+        if (invalidCategory(queryObj)) {
+          response.status(400);
+          response.send("Invalid Todo Category");
+        } else if (invalidPriority(queryObj)) {
+          response.status(400);
+          response.send("Invalid Todo Priority");
+        }
+      }
+      break;
+    // STATUS
+    case havingStatus(queryObj):
+      if (
+        queryObj.status === "TO DO" ||
+        queryObj.status === "IN PROGRESS" ||
+        queryObj.status === "DONE"
+      ) {
+        getQuery = `
+            SELECT 
+               * 
+            FROM 
+              todo
+            WHERE 
+              status = '${queryObj.status}'`;
+      } else {
+        response.status(400);
+        response.send("Invalid Todo Status");
+      }
+
+      break;
+    // PRIORITY
+    case havingPriority(queryObj):
+      if (
+        queryObj.priority === "HIGH" ||
+        queryObj.priority === "MEDIUM" ||
+        queryObj.priority === "LOW"
+      ) {
+        getQuery = `
+            SELECT * FROM todo
+            WHERE priority = '${queryObj.priority}'`;
+      } else {
+        response.status(400);
+        response.send("Invalid Todo Priority");
+      }
+      break;
+    // SEARCH_Q
+    case havingSearch_q(queryObj):
+      getQuery = `
+          SELECT * FROM todo
+          WHERE todo LIKE '%${queryObj.search_q}%';`;
+
+      break;
+    case havingCategory(queryObj):
+      if (
+        queryObj.category === "WORK" ||
+        queryObj.category === "HOME" ||
+        queryObj.category === "LEARNING"
+      ) {
+        getQuery = `
+            SELECT * FROM todo
+            WHERE category = '${queryObj.category}';`;
+      } else {
+        response.status(400);
+        response.send("Invalid Todo Category");
+      }
+      break;
+
+    default:
+      break;
+  }
+
+  const result = await db.all(getQuery);
+  console.log(queryObj.priority);
+  console.log(queryObj.category);
+  response.send(result.map((eachItem) => responsePattern(eachItem)));
+});
+
+app.get("/todos/:todoId/", async (request, response) => {
+  const { todoId } = request.params;
+
+  const getQuery = `
+    SELECT * FROM todo
+    WHERE id = ${todoId};`;
+
+  const result = await db.get(getQuery);
+  response.send(responsePattern(result));
+});
+
+app.get("/agenda/", async (request, response) => {
+  const { date } = request.query;
+  //console.log(date);
+  const res = format(new Date(date), "yyyy-MM-dd");
+  //console.log(res);
+
+  const getQuery = `
+  SELECT * FROM todo
+  WHERE due_date LIKE '${res}';`;
+  const result = await db.get(getQuery);
+  response.send(result);
+});
+
+app.post("/todos/", async (request, response) => {
+  const { id, todo, priority, status, category, dueDate } = request.body;
+
+  const addTodoQuery = `
+    INSERT INTO todo(id , todo , priority , status , category , due_date)
+    VALUES (
+        ${id},
+        '${todo}',
+        '${priority}',
+        '${status}',
+        '${category}',
+        '${dueDate}'
+    );`;
+
+  await db.run(addTodoQuery);
+  response.send("Todo Successfully Added");
+});
+
+app.put("/todos/:todoId/", async (request, response) => {
+  const { todoId } = request.params;
+  let updateColumn = "";
+  const requestBody = request.body;
+  //console.log(requestBody);
+  switch (true) {
+    case requestBody.status !== undefined:
+      updateColumn = "Status";
+      break;
+    case requestBody.priority !== undefined:
+      updateColumn = "Priority";
+      break;
+    case requestBody.category !== undefined:
+      updateColumn = "Category";
+      break;
+    case requestBody.todo !== undefined:
+      updateColumn = "Todo";
+      break;
+    case requestBody.dueDate !== undefined:
+      updateColumn = "Due Date";
+      break;
+  }
+  //console.log(updateColumn);
+  const getQuery = `
+  SELECT 
+     * 
+  FROM 
+     todo
+  WHERE 
+     id = ${todoId};`;
+
+  const prevObj = await db.get(getQuery);
+
+  const {
+    id = prevObj.id,
+    todo = prevObj.todo,
+    priority = prevObj.priority,
+    status = prevObj.status,
+    category = prevObj.category,
+    dueDate = prevObj.due_date,
+  } = request.body;
+
+  const updateTodoQuery = `
+    UPDATE
+      todo
+    SET
+      todo='${todo}',
+      priority='${priority}',
+      status='${status}',
+      id = ${id},
+      category = '${category}',
+      due_date = '${dueDate}'
+    WHERE
+      id = ${todoId};`;
+
+  await db.run(updateTodoQuery);
+  response.send(`${updateColumn} Updated`);
+});
+
+app.delete("/todos/:todoId/", async (request, response) => {
+  const { todoId } = request.params;
+  const deleteQuery = `
+    DELETE FROM
+       todo
+    WHERE id = ${todoId};`;
+
+  await db.run(deleteQuery);
+  response.send("Todo Deleted");
+});
+
+module.exports = app;
